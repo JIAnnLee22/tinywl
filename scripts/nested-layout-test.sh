@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# Build tinywl, run it nested in the current Wayland session, spawn kitty,
+# then drive layout / scroll / focus via TINYWL_CMD_FIFO every 2 seconds.
+#
+# Requires: an existing Wayland session (WAYLAND_DISPLAY set), kitty,
+# and nix-shell with the same build inputs as the Makefile (see flake devShell).
+#
+# Usage: ./scripts/nested-layout-test.sh
+# Exit: compositor exit status (0 if quit command ran)
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+FIFO="$(mktemp -u "${TMPDIR:-/tmp}/tinywl-cmd.XXXXXX")"
+SOCKFILE="${TMPDIR:-/tmp}/tinywl-nested-wayland-$$"
+
+cleanup() {
+	rm -f "$FIFO" "$SOCKFILE"
+	kill ${KITTY_PIDS:-} 2>/dev/null || true
+	kill "${TWLPID:-}" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+rm -f "$SOCKFILE"
+
+mkfifo "$FIFO"
+export TINYWL_CMD_FIFO="$FIFO"
+# Nested GL (e.g. kitty inside tinywl inside Sway) is fragile on some Mesa stacks;
+# skip heavy scenefx toplevel decorations for this automated test.
+export TINYWL_NO_DECOR=1
+
+echo "[test] building…"
+nix-shell \
+	-p pkg-config wayland-scanner scenefx wlroots_0_19 wayland wayland-protocols \
+	libxkbcommon mesa libglvnd pixman gnumake kitty \
+	--run 'make'
+
+echo "[test] starting compositor (nested)…"
+./tinywl -c "$ROOT/share/tinywl/config.conf" -o "$SOCKFILE" &
+TWLPID=$!
+
+for _ in $(seq 1 200); do
+	if [[ -s "$SOCKFILE" ]]; then
+		break
+	fi
+	sleep 0.05
+done
+if [[ ! -s "$SOCKFILE" ]]; then
+	echo "[test] timeout waiting for WAYLAND_DISPLAY" >&2
+	exit 1
+fi
+
+NEST="$(tr -d '\n' <"$SOCKFILE")"
+export WAYLAND_DISPLAY="$NEST"
+
+echo "[test] WAYLAND_DISPLAY=$NEST"
+
+RUNDIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+for _ in $(seq 1 200); do
+	if [[ -S "$RUNDIR/$NEST" ]]; then
+		break
+	fi
+	sleep 0.05
+done
+
+# Compositor opens the FIFO for read before wlr_backend_start finishes; open our
+# writer now so we never block forever on exec 3>"$FIFO", then spawn clients.
+echo "[test] opening command FIFO writer…"
+exec 3>"$FIFO"
+
+echo "[test] launching kitty…"
+KITTY_PIDS=
+kitty --class tinywl-test &
+KITTY_PIDS="$!"
+sleep 0.5
+kitty --class tinywl-test &
+KITTY_PIDS="$KITTY_PIDS $!"
+
+sleep 1
+
+send() {
+	echo "[test] -> $1"
+	printf '%s\n' "$1" >&3
+}
+
+sleep 2
+send "layout scroller"
+sleep 2
+send "scroll 40"
+sleep 2
+send "scroll -40"
+sleep 2
+send "layout float"
+sleep 2
+send "cycle_focus"
+sleep 2
+send "layout scroller"
+sleep 2
+send "scroll 80"
+sleep 2
+send "layout float"
+sleep 2
+send "quit"
+
+echo "[test] waiting for compositor…"
+wait "$TWLPID"
+exit $?

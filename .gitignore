@@ -1,0 +1,3 @@
+/tinywl
+src/*.o
+protocol/
