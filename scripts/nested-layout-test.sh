@@ -34,9 +34,6 @@ rm -f "$SOCKFILE"
 
 mkfifo "$FIFO"
 export TINYWL_CMD_FIFO="$FIFO"
-# Nested GL (e.g. kitty inside tinywl inside Sway) is fragile on some Mesa stacks;
-# skip heavy scenefx toplevel decorations for this automated test.
-export TINYWL_NO_DECOR=1
 
 build_tinywl() {
 	if [[ "${TINYWL_TEST_USE_NIX:-1}" != "0" ]] && command -v nix >/dev/null 2>&1 && [[ -f "$ROOT/flake.nix" ]]; then

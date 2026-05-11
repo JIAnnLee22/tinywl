@@ -12,7 +12,6 @@
 #include <time.h>
 #include <unistd.h>
 #include <scenefx/render/fx_renderer/fx_renderer.h>
-#include <scenefx/types/fx/corner_location.h>
 #include <scenefx/types/wlr_scene.h>
 #include <wayland-server-core.h>
 #include <wayland-util.h>
@@ -37,8 +36,6 @@
 #include "compositor.h"
 #include "layout.h"
 #include "server.h"
-
-#define BORDER_THICKNESS 3
 
 static int cmd_fifo_fd = -1;
 static struct wl_event_source *cmd_fifo_source = NULL;
@@ -595,17 +592,6 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
 
 	struct wlr_box *geometry = &toplevel->xdg_toplevel->base->geometry;
 	wlr_scene_subsurface_tree_set_clip(&toplevel->xdg_scene_tree->node, geometry);
-
-	if (!toplevel->server->no_decor && toplevel->border != NULL &&
-			toplevel->shadow != NULL) {
-		int border_width = geometry->width + (BORDER_THICKNESS * 2);
-		int border_height = geometry->height + (BORDER_THICKNESS * 2);
-		wlr_scene_rect_set_size(toplevel->border, border_width, border_height);
-		int blur_sigma = toplevel->shadow->blur_sigma;
-		wlr_scene_shadow_set_size(toplevel->shadow,
-				border_width + (blur_sigma * 2),
-				border_height + (blur_sigma * 2));
-	}
 }
 
 static void output_configure_scene(struct wlr_scene_node *node,
@@ -635,12 +621,6 @@ static void output_configure_scene(struct wlr_scene_node *node,
 				xdg_surface &&
 				xdg_surface->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
 			wlr_scene_buffer_set_opacity(buffer, toplevel->opacity);
-
-			if (!toplevel->server->no_decor &&
-					!wlr_subsurface_try_from_wlr_surface(xdg_surface->surface)) {
-				wlr_scene_buffer_set_corner_radius(
-						buffer, toplevel->corner_radius, CORNER_LOCATION_BOTTOM);
-			}
 		}
 	} else if (node->type == WLR_SCENE_NODE_TREE) {
 		struct wlr_scene_tree *tree = wl_container_of(node, tree, node);
@@ -683,10 +663,8 @@ static void output_request_state(struct wl_listener *listener, void *data) {
 	 * output. More advanced compositors should either implement per output blur
 	 * nodes or set it to the size of all outputs.
 	 */
-	if (!output->server->no_decor) {
-		wlr_scene_optimized_blur_set_size(output->server->layers.blur_layer,
-				output->wlr_output->width, output->wlr_output->height);
-	}
+	wlr_scene_optimized_blur_set_size(output->server->layers.blur_layer,
+			output->wlr_output->width, output->wlr_output->height);
 }
 
 static void output_destroy(struct wl_listener *listener, void *data) {
@@ -767,10 +745,8 @@ static void server_new_output(struct wl_listener *listener, void *data) {
 	 * output. More advanced compositors should either implement per output blur
 	 * nodes or set it to the size of all outputs.
 	 */
-	if (!output->server->no_decor) {
-		wlr_scene_optimized_blur_set_size(output->server->layers.blur_layer,
-				output->wlr_output->width, output->wlr_output->height);
-	}
+	wlr_scene_optimized_blur_set_size(output->server->layers.blur_layer,
+			output->wlr_output->width, output->wlr_output->height);
 	layout_arrange(output->server);
 }
 
@@ -789,14 +765,6 @@ static void iter_xdg_scene_buffers(struct wlr_scene_buffer *buffer, int sx,
 			xdg_surface &&
 			xdg_surface->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
 		wlr_scene_buffer_set_opacity(buffer, toplevel->opacity);
-		if (!toplevel->server->no_decor &&
-				!wlr_subsurface_try_from_wlr_surface(xdg_surface->surface)) {
-			wlr_scene_buffer_set_corner_radius(buffer, toplevel->corner_radius,
-					CORNER_LOCATION_BOTTOM);
-			wlr_scene_buffer_set_backdrop_blur(buffer, true);
-			wlr_scene_buffer_set_backdrop_blur_optimized(buffer, true);
-			wlr_scene_buffer_set_backdrop_blur_ignore_transparent(buffer, true);
-		}
 	}
 }
 
@@ -947,29 +915,7 @@ static void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
 	toplevel->scene_tree->node.data = toplevel;
 	xdg_toplevel->base->data = toplevel->scene_tree;
 
-	/* Set the scene_nodes decoration data */
 	toplevel->opacity = 1;
-	toplevel->corner_radius = 20;
-	toplevel->border = NULL;
-	toplevel->shadow = NULL;
-
-	if (!server->no_decor) {
-		toplevel->border = wlr_scene_rect_create(toplevel->scene_tree, 0, 0,
-				(float[4]){ 1.0f, 0.f, 0.f, 1.0f });
-		wlr_scene_rect_set_corner_radius(toplevel->border,
-				toplevel->corner_radius + BORDER_THICKNESS, CORNER_LOCATION_BOTTOM);
-		wlr_scene_node_set_position(&toplevel->border->node, -BORDER_THICKNESS,
-				-BORDER_THICKNESS);
-
-		float blur_sigma = 20.0f;
-		toplevel->shadow = wlr_scene_shadow_create(toplevel->scene_tree,
-				0, 0, toplevel->corner_radius, blur_sigma, (float[4]){ 0.f, 1.0f, 0.f, 1.0f });
-		wlr_scene_node_set_position(&toplevel->shadow->node,
-				-BORDER_THICKNESS - blur_sigma, -BORDER_THICKNESS - blur_sigma);
-
-		wlr_scene_node_lower_to_bottom(&toplevel->border->node);
-		wlr_scene_node_lower_to_bottom(&toplevel->shadow->node);
-	}
 
 	/* Listen to the various events it can emit */
 	toplevel->map.notify = xdg_toplevel_map;
@@ -1107,10 +1053,6 @@ int main(int argc, char *argv[]) {
 	struct tinywl_server server = {0};
 	server.layout_mode = LAYOUT_FLOAT;
 	server.scroll_viewport_offset = 0;
-	{
-		const char *nd = getenv("TINYWL_NO_DECOR");
-		server.no_decor = nd != NULL && nd[0] != '\0' && strcmp(nd, "0") != 0;
-	}
 
 	const char *config_path = config_arg;
 	if (!config_path) {

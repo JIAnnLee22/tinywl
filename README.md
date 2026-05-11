@@ -110,12 +110,6 @@ If **`TINYWL_CMD_FIFO`** is set to a filesystem FIFO path, the compositor opens 
 
 Empty lines and lines starting with `#` are ignored.
 
-## Nested sessions and `TINYWL_NO_DECOR`
-
-Running a GL client (e.g. **Kitty**) inside a nested compositor on some **Mesa / AMDGPU** stacks can crash the compositor when full scenefx decorations (shadows, backdrop blur, optimized blur sizing) are enabled.
-
-Set **`TINYWL_NO_DECOR`** to any non-empty value other than `0` to disable those paths for a more stable nested session. The nested test script sets this automatically.
-
 ## Nested layout test
 
 Requires an existing Wayland session and **Kitty** on your `PATH`.

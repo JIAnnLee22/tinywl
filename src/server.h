@@ -61,8 +61,6 @@ struct tinywl_server {
 	enum layout_mode layout_mode;
 	double scroll_viewport_offset;
 	struct comp_ruleset rules;
-	/* TINYWL_NO_DECOR: skip shadow/border/scenefx paths that break nested GL on some drivers */
-	bool no_decor;
 };
 
 struct tinywl_output {
@@ -90,9 +88,6 @@ struct tinywl_toplevel {
 	struct wl_listener request_fullscreen;
 
 	float opacity;
-	int corner_radius;
-	struct wlr_scene_shadow *shadow;
-	struct wlr_scene_rect *border;
 };
 
 struct tinywl_popup {
