@@ -97,7 +97,9 @@ See `share/tinywl/config.conf`. Lines look like:
 - `binds=MODIFIERS,KEYSYM,action,arg`
 - `axisbind=MODIFIERS,vertical|horizontal,scroll_viewport,STEP`
 
-Actions include `quit`, `cycle_focus`, `set_layout` with `float` or `scroller`, and axis actions such as `scroll_viewport`.
+Actions include `quit`, `cycle_focus`, `set_layout` with `float` or `scroller`, `exec` with a shell snippet in the last field (runs via `/bin/sh -c`, double-forked like `-s`), and axis actions such as `scroll_viewport`.
+
+Example: `binds=SUPER+SHIFT,Return,exec,kitty` starts [Kitty](https://sw.kovidgoyal.net/kitty/) when **Super+Shift+Return** is pressed (adjust modifiers and keysym names as you like).
 
 ## Automation (`TINYWL_CMD_FIFO`)
 

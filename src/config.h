@@ -14,13 +14,15 @@ enum comp_action {
 	COMP_ACTION_SET_LAYOUT_FLOAT,
 	COMP_ACTION_SET_LAYOUT_SCROLLER,
 	COMP_ACTION_SCROLL_VIEWPORT,
+	/** Run `arg` with `/bin/sh -c` (double-forked); see share/tinywl/config.conf */
+	COMP_ACTION_EXEC,
 };
 
 struct comp_keybind {
 	uint32_t modifiers;
 	xkb_keysym_t keysym;
 	enum comp_action action;
-	char arg[64];
+	char arg[512];
 };
 
 struct comp_axisbind {

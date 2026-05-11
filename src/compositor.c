@@ -1037,6 +1037,31 @@ void tinywl_server_scroll_viewport(struct tinywl_server *server, double delta) {
 	layout_arrange(server);
 }
 
+void tinywl_server_spawn_sh(const char *cmd) {
+	if (cmd == NULL || cmd[0] == '\0') {
+		return;
+	}
+	/*
+	 * Double-fork so the shell is reparented away from the compositor
+	 * process. A single fork() after EGL/GBM init has been observed to
+	 * crash the parent on some Mesa/AMD + nested Wayland setups.
+	 */
+	pid_t pid1 = fork();
+	if (pid1 == 0) {
+		pid_t pid2 = fork();
+		if (pid2 == 0) {
+			execl("/bin/sh", "/bin/sh", "-c", cmd, (void *)NULL);
+			_exit(127);
+		}
+		_exit(pid2 < 0 ? 1 : 0);
+	} else if (pid1 < 0) {
+		wlr_log_errno(WLR_ERROR, "fork for spawn");
+	} else {
+		int st = 0;
+		(void)waitpid(pid1, &st, 0);
+	}
+}
+
 int main(int argc, char *argv[]) {
 	wlr_log_init(WLR_DEBUG, NULL);
 	char *startup_cmd = NULL;
@@ -1300,25 +1325,7 @@ int main(int argc, char *argv[]) {
 	 * startup command if requested. */
 	setenv("WAYLAND_DISPLAY", socket, true);
 	if (startup_cmd != NULL) {
-		/*
-		 * Double-fork so the shell is reparented away from the compositor
-		 * process. A single fork() after EGL/GBM init has been observed to
-		 * crash the parent on some Mesa/AMD + nested Wayland setups.
-		 */
-		pid_t pid1 = fork();
-		if (pid1 == 0) {
-			pid_t pid2 = fork();
-			if (pid2 == 0) {
-				execl("/bin/sh", "/bin/sh", "-c", startup_cmd, (void *)NULL);
-				_exit(127);
-			}
-			_exit(pid2 < 0 ? 1 : 0);
-		} else if (pid1 < 0) {
-			wlr_log_errno(WLR_ERROR, "fork for -s startup_cmd");
-		} else {
-			int st = 0;
-			(void)waitpid(pid1, &st, 0);
-		}
+		tinywl_server_spawn_sh(startup_cmd);
 	}
 	/* Run the Wayland event loop. This does not return until you exit the
 	 * compositor. Starting the backend rigged up all of the necessary event

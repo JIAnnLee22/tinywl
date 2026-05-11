@@ -17,6 +17,7 @@ static const char default_config[] =
 	"binds=ALT,F1,cycle_focus,\n"
 	"binds=SUPER+SHIFT,F,set_layout,float\n"
 	"binds=SUPER+SHIFT,S,set_layout,scroller\n"
+	"binds=SUPER+SHIFT,Return,exec,kitty\n"
 	"axisbind=NONE,vertical,scroll_viewport,40\n";
 
 void comp_ruleset_fini(struct comp_ruleset *r) {
@@ -155,6 +156,13 @@ static bool handle_line(struct comp_ruleset *r, char *line, int lineno, bool str
 			}
 			return append_key(r, mods, sym, act, arg);
 		}
+		if (strcasecmp(aname, "exec") == 0) {
+			if (arg[0] == '\0') {
+				fprintf(stderr, "config line %d: exec needs a shell command in the last field\n", lineno);
+				return strict ? false : true;
+			}
+			return append_key(r, mods, sym, COMP_ACTION_EXEC, arg);
+		}
 		if (!parse_action(aname, &act)) {
 			fprintf(stderr, "config line %d: unknown action \"%s\"\n", lineno, aname);
 			return strict ? false : true;
@@ -261,6 +269,9 @@ bool comp_ruleset_dispatch_key(
 			return true;
 		case COMP_ACTION_SET_LAYOUT_SCROLLER:
 			tinywl_server_set_layout(server, LAYOUT_SCROLLER);
+			return true;
+		case COMP_ACTION_EXEC:
+			tinywl_server_spawn_sh(b->arg);
 			return true;
 		default:
 			break;
