@@ -3,6 +3,9 @@
 #include "config.h"
 #include "layout.h"
 
+/** Compositor border width in layout pixels (must match border rect in compositor.c). */
+#define TINYWL_BORDER_THICKNESS 3
+
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_scene.h>
@@ -61,6 +64,8 @@ struct tinywl_server {
 	enum layout_mode layout_mode;
 	double scroll_viewport_offset;
 	struct comp_ruleset rules;
+	/* Monotonic id for float auto-placement cascade (newer serial > older). */
+	uint32_t float_place_serial;
 };
 
 struct tinywl_output {
@@ -90,6 +95,10 @@ struct tinywl_toplevel {
 	float opacity;
 	/* Compositor frame behind the client surface (no shadow / blur). */
 	struct wlr_scene_rect *border;
+	/* Set when the user starts an interactive move in float layout. */
+	bool float_user_positioned;
+	/* Creation order for float cascade; assigned in server_new_xdg_toplevel. */
+	uint32_t float_place_serial;
 };
 
 struct tinywl_popup {

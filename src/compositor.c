@@ -37,8 +37,6 @@
 #include "layout.h"
 #include "server.h"
 
-#define BORDER_THICKNESS 3
-
 static int cmd_fifo_fd = -1;
 static struct wl_event_source *cmd_fifo_source = NULL;
 static char cmd_carry[512];
@@ -596,9 +594,12 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
 	wlr_scene_subsurface_tree_set_clip(&toplevel->xdg_scene_tree->node, geometry);
 
 	if (toplevel->border != NULL) {
-		int w = geometry->width + BORDER_THICKNESS * 2;
-		int h = geometry->height + BORDER_THICKNESS * 2;
+		int w = geometry->width + TINYWL_BORDER_THICKNESS * 2;
+		int h = geometry->height + TINYWL_BORDER_THICKNESS * 2;
 		wlr_scene_rect_set_size(toplevel->border, w, h);
+	}
+	if (toplevel->server->layout_mode == LAYOUT_FLOAT) {
+		layout_arrange(toplevel->server);
 	}
 }
 
@@ -839,6 +840,7 @@ static void begin_interactive(struct tinywl_toplevel *toplevel,
 	server->cursor_mode = mode;
 
 	if (mode == TINYWL_CURSOR_MOVE) {
+		toplevel->float_user_positioned = true;
 		server->grab_x = server->cursor->x - toplevel->scene_tree->node.x;
 		server->grab_y = server->cursor->y - toplevel->scene_tree->node.y;
 	} else {
@@ -924,11 +926,13 @@ static void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
 	xdg_toplevel->base->data = toplevel->scene_tree;
 
 	toplevel->opacity = 1;
+	toplevel->float_place_serial = ++server->float_place_serial;
 
 	/* Plain rect frame (no scenefx shadow / rounded corners on buffers). */
 	static const float border_color[4] = { 0.35f, 0.35f, 0.38f, 1.f };
 	toplevel->border = wlr_scene_rect_create(toplevel->scene_tree, 0, 0, border_color);
-	wlr_scene_node_set_position(&toplevel->border->node, -BORDER_THICKNESS, -BORDER_THICKNESS);
+	wlr_scene_node_set_position(&toplevel->border->node, -TINYWL_BORDER_THICKNESS,
+			-TINYWL_BORDER_THICKNESS);
 	wlr_scene_node_lower_to_bottom(&toplevel->border->node);
 
 	/* Listen to the various events it can emit */
@@ -1014,10 +1018,15 @@ void tinywl_server_cycle_focus(struct tinywl_server *server) {
 }
 
 void tinywl_server_set_layout(struct tinywl_server *server, enum layout_mode mode) {
+	enum layout_mode prev = server->layout_mode;
 	server->layout_mode = mode;
-	if (mode == LAYOUT_SCROLLER) {
-		layout_arrange(server);
+	if (mode == LAYOUT_FLOAT && prev == LAYOUT_SCROLLER) {
+		struct tinywl_toplevel *t;
+		wl_list_for_each(t, &server->toplevels, link) {
+			t->float_user_positioned = false;
+		}
 	}
+	layout_arrange(server);
 }
 
 void tinywl_server_scroll_viewport(struct tinywl_server *server, double delta) {
