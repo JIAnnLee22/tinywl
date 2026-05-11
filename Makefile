@@ -1,4 +1,5 @@
 PREFIX ?= /usr/local
+DESTDIR ?=
 PKG_CONFIG ?= pkg-config
 WAYLAND_PROTOCOLS := $(shell $(PKG_CONFIG) --variable=pkgdatadir wayland-protocols)
 
@@ -27,7 +28,17 @@ src/%.o: src/%.c $(PROTOCOLS)
 clean:
 	rm -f tinywl $(OBJS) $(PROTOCOLS)
 
-.PHONY: all clean test-nested
+install: tinywl share/tinywl/config.conf
+	install -d "$(DESTDIR)$(PREFIX)/bin"
+	install -m755 tinywl "$(DESTDIR)$(PREFIX)/bin/tinywl"
+	install -d "$(DESTDIR)$(PREFIX)/share/tinywl"
+	install -m644 share/tinywl/config.conf "$(DESTDIR)$(PREFIX)/share/tinywl/config.conf"
+
+uninstall:
+	rm -f "$(DESTDIR)$(PREFIX)/bin/tinywl"
+	rm -f "$(DESTDIR)$(PREFIX)/share/tinywl/config.conf"
+
+.PHONY: all clean install uninstall test-nested
 
 # Nested compositor + kitty + automated layout commands (needs active Wayland session + kitty).
 test-nested:

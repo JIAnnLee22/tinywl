@@ -2,8 +2,10 @@
 # Build tinywl, run it nested in the current Wayland session, spawn kitty,
 # then drive layout / scroll / focus via TINYWL_CMD_FIFO every 2 seconds.
 #
-# Requires: an existing Wayland session (WAYLAND_DISPLAY set), kitty,
-# and nix-shell with the same build inputs as the Makefile (see flake devShell).
+# Requires: an existing Wayland session (WAYLAND_DISPLAY set), kitty, and a
+# working `make` (system packages or Nix). Build step:
+#   - If flake.nix exists and `nix` is available: `nix develop -c make`
+#   - Else: plain `make` (set TINYWL_TEST_USE_NIX=0 to skip Nix even when installed)
 #
 # Usage: ./scripts/nested-layout-test.sh
 # Exit: compositor exit status (0 if quit command ran)
@@ -31,11 +33,25 @@ export TINYWL_CMD_FIFO="$FIFO"
 # skip heavy scenefx toplevel decorations for this automated test.
 export TINYWL_NO_DECOR=1
 
+build_tinywl() {
+	if [[ "${TINYWL_TEST_USE_NIX:-1}" != "0" ]] && command -v nix >/dev/null 2>&1 && [[ -f "$ROOT/flake.nix" ]]; then
+		nix develop "$ROOT" -c make
+		return
+	fi
+	if ! command -v pkg-config >/dev/null 2>&1; then
+		echo "[test] pkg-config not found; install build deps or use Nix (see README)." >&2
+		exit 1
+	fi
+	if ! pkg-config --exists wlroots-0.19 scenefx-0.4 wayland-server 2>/dev/null; then
+		echo "[test] missing pkg-config modules (wlroots-0.19, scenefx-0.4, wayland-server)." >&2
+		echo "[test] Install distro dev packages or run: nix develop -c make" >&2
+		exit 1
+	fi
+	make
+}
+
 echo "[test] building…"
-nix-shell \
-	-p pkg-config wayland-scanner scenefx wlroots_0_19 wayland wayland-protocols \
-	libxkbcommon mesa libglvnd pixman gnumake kitty \
-	--run 'make'
+build_tinywl
 
 echo "[test] starting compositor (nested)…"
 ./tinywl -c "$ROOT/share/tinywl/config.conf" -o "$SOCKFILE" &

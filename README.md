@@ -4,36 +4,62 @@ Minimal Wayland compositor using **wlroots 0.19** and **scenefx**, with an exter
 
 ## Requirements
 
-- C11 compiler, GNU make, `pkg-config`
-- **wlroots** 0.19, **scenefx** 0.4, **wayland-server**, **wayland-protocols**, **wayland-scanner**, **libxkbcommon**, **GLESv2**, **pixman**, Mesa/GL stack as required by wlroots
+- C11 compiler, GNU **make**, **pkg-config**
+- **wlroots** 0.19, **scenefx** 0.4, **wayland-server**, **wayland-protocols**, **wayland-scanner**, **libxkbcommon**, **GLESv2** (or compatible GL stack), **pixman**, Mesa/DRM as required by wlroots
 
-On **Nix** (recommended), use the flake dev shell or package (see below).
+`pkg-config` must see at least: `wlroots-0.19`, `scenefx-0.4`, `wayland-server`, `wayland-protocols`, `xkbcommon`, `glesv2`, `pixman-1`.
 
-## Build
+---
 
-### With Nix
+## NixOS and Nix (flake)
+
+This repo is a **flake**. From the repository root:
+
+| Goal | Command |
+|------|---------|
+| Development shell (same as `devShells.default`) | `nix develop` |
+| Classic `nix-shell` entry | `nix-shell` or `nix-shell ./shell.nix` |
+| Build installable package | `nix build` → `result/bin/tinywl`, `result/share/tinywl/config.conf` |
+| Install to profile (example) | `nix profile install .` (or add the flake as a flake input and expose `packages.${pkgs.system}.default`) |
+
+`shell.nix` reuses the flake dev shell via `builtins.getFlake`, so you need **flakes enabled** (default on current NixOS). The dev shell is defined only for **x86_64-linux** and **aarch64-linux** (see `flake.nix`).
+
+**Declarative NixOS:** add this repository as a flake input, then install `packages.${pkgs.system}.default` into `environment.systemPackages` or your user profile.
+
+---
+
+## Other Linux distributions (no Nix)
+
+Install the **development** packages that provide the pkg-config names above. Names differ by distro; examples (may need version bumps or extra repos):
+
+| Distro | Hints (not exhaustive) |
+|--------|-------------------------|
+| **Debian / Ubuntu** | `build-essential`, `pkg-config`, `libwlroots-0.19-dev` (if available), `wayland-protocols`, `libwayland-dev`, `libxkbcommon-dev`, `libpixman-1-dev`, `libgl-dev` / `libgles2-mesa-dev`, plus **scenefx** if packaged or built from source |
+| **Fedora** | `gcc`, `make`, `pkgconf-pkg-config`, `wlroots-devel`, `wayland-devel`, `wayland-protocols-devel`, `libxkbcommon-devel`, `mesa-libGLES-devel`, `pixman-devel`, **scenefx** from COPR/source if missing |
+| **Arch Linux** | `base-devel`, `wlroots`, `scenefx`, `wayland`, `wayland-protocols`, `libxkbcommon`, `pixman`, `libglvnd` |
+
+Many stable distros ship **wlroots &lt; 0.19** or no **scenefx**; you may need **AUR**, **PPA**, **COPR**, or to build those libraries from upstream before building tinywl.
+
+Then:
 
 ```bash
-nix develop   # or: nix-shell
+make
+sudo make install              # PREFIX defaults to /usr/local
+# packaging:
+make install DESTDIR=/tmp/stage PREFIX=/usr
+```
+
+---
+
+## Build (quick reference)
+
+```bash
 make
 ```
 
-Build the flake package (from the repository root):
+The Makefile runs `wayland-scanner` to generate `protocol/xdg-shell-protocol.h` from `wayland-protocols` (path from `pkg-config --variable=pkgdatadir wayland-protocols`).
 
-```bash
-nix build
-./result/bin/tinywl -h
-```
-
-### Without Nix
-
-Install the same development packages your distribution provides (names vary), then:
-
-```bash
-make
-```
-
-The Makefile runs `wayland-scanner` to generate `protocol/xdg-shell-protocol.h` from `wayland-protocols`.
+---
 
 ## Run
 
@@ -43,7 +69,7 @@ From another Wayland session (nested compositor):
 ./tinywl
 ```
 
-From a VT with DRM/KMS (typical wlroots behavior; depends on your setup):
+From a VT with DRM/KMS (depends on your setup):
 
 ```bash
 ./tinywl
@@ -56,7 +82,7 @@ Useful **wlroots** environment variables still apply, for example `WLR_BACKENDS=
 | Option | Meaning |
 |--------|---------|
 | `-c path` | Use this config file instead of the default search path |
-| `-o path` | After startup, write the `WAYLAND_DISPLAY` socket name to this file (UTF-8, no newline required by clients; scripts often use `tr -d '\n'`) |
+| `-o path` | After startup, write the `WAYLAND_DISPLAY` socket name to this file |
 | `-p` | Parse config only, then exit (`0` if OK) |
 | `-s cmd` | After the display is ready, run `cmd` via `/bin/sh -c` (double-forked) |
 
@@ -92,7 +118,11 @@ Set **`TINYWL_NO_DECOR`** to any non-empty value other than `0` to disable those
 
 ## Nested layout test
 
-Requires an existing Wayland session, **Kitty**, and Nix with the flake dev inputs (or equivalent `nix-shell -p …` as in the script):
+Requires an existing Wayland session and **Kitty** on your `PATH`.
+
+- If **`nix`** is available and **`flake.nix`** exists, the script runs **`nix develop -c make`** (same lockfile as CI).
+- Otherwise it runs plain **`make`**, after checking **`pkg-config`** for `wlroots-0.19` and `scenefx-0.4`.
+- Set **`TINYWL_TEST_USE_NIX=0`** to force system `make` even when Nix is installed.
 
 ```bash
 make test-nested
@@ -100,8 +130,9 @@ make test-nested
 ./scripts/nested-layout-test.sh
 ```
 
-The script builds with `make`, starts `tinywl` with `-o` and `TINYWL_CMD_FIFO`, waits for the socket under `$XDG_RUNTIME_DIR`, then drives layout commands over the FIFO.
+## Uninstall (Makefile)
 
-## Install
-
-This repository’s `Makefile` builds the `tinywl` binary only. Install by copying `tinywl` to your `PATH` and installing `share/tinywl/config.conf` where you want the default sample (for example `/usr/local/share/tinywl/`), or use **`nix build`** and deploy the `result/` tree.
+```bash
+sudo make uninstall
+# or with the same PREFIX / DESTDIR used for install
+```
