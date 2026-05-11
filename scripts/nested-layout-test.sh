@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
-# Build tinywl, run it nested in the current Wayland session, spawn kitty,
-# then drive layout / scroll / focus via TINYWL_CMD_FIFO every 2 seconds.
+# Build tinywl, run it nested in the current Wayland session, spawn several
+# Kitty windows (scroller stress), then drive layout / scroll / focus via
+# TINYWL_CMD_FIFO.
 #
 # Requires: an existing Wayland session (WAYLAND_DISPLAY set), kitty, and a
 # working `make` (system packages or Nix). Build step:
 #   - If flake.nix exists and `nix` is available: `nix develop -c make`
 #   - Else: plain `make` (set TINYWL_TEST_USE_NIX=0 to skip Nix even when installed)
+#
+# Environment:
+#   TINYWL_TEST_KITTY_COUNT   Number of Kitty windows (default: 5)
+#   TINYWL_TEST_USE_NIX      Set to 0 to force system make (see README)
 #
 # Usage: ./scripts/nested-layout-test.sh
 # Exit: compositor exit status (0 if quit command ran)
@@ -86,38 +91,56 @@ done
 echo "[test] opening command FIFO writer…"
 exec 3>"$FIFO"
 
-echo "[test] launching kitty…"
-KITTY_PIDS=
-kitty --class tinywl-test &
-KITTY_PIDS="$!"
-sleep 0.5
-kitty --class tinywl-test &
-KITTY_PIDS="$KITTY_PIDS $!"
+KITTY_COUNT="${TINYWL_TEST_KITTY_COUNT:-5}"
+if ! [[ "$KITTY_COUNT" =~ ^[1-9][0-9]*$ ]]; then
+	echo "[test] TINYWL_TEST_KITTY_COUNT must be a positive integer" >&2
+	exit 1
+fi
 
-sleep 1
+echo "[test] launching ${KITTY_COUNT} kitty windows (class tinywl-test)…"
+KITTY_PIDS=
+for i in $(seq 1 "$KITTY_COUNT"); do
+	kitty --class tinywl-test --title "tinywl-scroll-${i}/${KITTY_COUNT}" &
+	KITTY_PIDS="${KITTY_PIDS:+$KITTY_PIDS }$!"
+	sleep 0.4
+done
+
+# Let surfaces map and initial configures settle before driving the FIFO.
+sleep 3
 
 send() {
 	echo "[test] -> $1"
 	printf '%s\n' "$1" >&3
 }
 
-sleep 2
-send "layout scroller"
-sleep 2
-send "scroll 40"
-sleep 2
-send "scroll -40"
-sleep 2
-send "layout float"
-sleep 2
-send "cycle_focus"
-sleep 2
+# --- Scroller-focused scenario (multiple stacked toplevels) ---
 send "layout scroller"
 sleep 2
 send "scroll 80"
+sleep 1.5
+send "scroll 120"
+sleep 1.5
+send "scroll 100"
+sleep 1.5
+send "scroll -150"
+sleep 1.5
+send "scroll -80"
 sleep 2
+
 send "layout float"
+sleep 1.5
+send "cycle_focus"
+sleep 1.5
+
+send "layout scroller"
 sleep 2
+send "scroll 200"
+sleep 1.5
+send "scroll -100"
+sleep 2
+
+send "layout float"
+sleep 1.5
 send "quit"
 
 echo "[test] waiting for compositor…"

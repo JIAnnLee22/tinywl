@@ -40,6 +40,7 @@ uninstall:
 
 .PHONY: all clean install uninstall test-nested
 
-# Nested compositor + kitty + automated layout commands (needs active Wayland session + kitty).
+# Nested compositor + multiple Kitty windows + FIFO-driven scroller/float tests.
+# Optional: TINYWL_TEST_KITTY_COUNT (default 5), TINYWL_TEST_USE_NIX=0.
 test-nested:
 	bash scripts/nested-layout-test.sh

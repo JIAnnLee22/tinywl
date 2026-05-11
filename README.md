@@ -123,11 +123,12 @@ Requires an existing Wayland session and **Kitty** on your `PATH`.
 - If **`nix`** is available and **`flake.nix`** exists, the script runs **`nix develop -c make`** (same lockfile as CI).
 - Otherwise it runs plain **`make`**, after checking **`pkg-config`** for `wlroots-0.19` and `scenefx-0.4`.
 - Set **`TINYWL_TEST_USE_NIX=0`** to force system `make` even when Nix is installed.
+- **`TINYWL_TEST_KITTY_COUNT`** (default **5**): how many Kitty windows to open for the vertical scroller exercise.
 
 ```bash
 make test-nested
 # or:
-./scripts/nested-layout-test.sh
+TINYWL_TEST_KITTY_COUNT=8 ./scripts/nested-layout-test.sh
 ```
 
 ## Uninstall (Makefile)
