@@ -88,6 +88,8 @@ struct tinywl_toplevel {
 	struct wl_listener request_fullscreen;
 
 	float opacity;
+	/* Compositor frame behind the client surface (no shadow / blur). */
+	struct wlr_scene_rect *border;
 };
 
 struct tinywl_popup {
