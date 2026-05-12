@@ -107,7 +107,7 @@ Actions include `quit`, `cycle_focus`, `set_layout` with `float` or `scroller`, 
 
 Example: `binds=SUPER+SHIFT,Return,exec,kitty` starts [Kitty](https://sw.kovidgoyal.net/kitty/) when **Super+Shift+Return** is pressed (adjust modifiers and keysym names as you like).
 
-Toplevels use **xdg-decoration**: the compositor advertises `xdg-decoration-unstable-v1` and keeps decoration mode at **none** (no client-side title bar when the client cooperates). GTK apps may still need `GTK_CSD=0` or similar if they ignore the protocol.
+Toplevels use **xdg-decoration**: the compositor advertises `xdg-decoration-unstable-v1` and negotiates **server-side** decoration (`MODE_SERVER_SIDE`), meaning clients should not draw their own title bar; our scene border/shadow act as minimal chrome. wlroots does not allow `set_mode(NONE)`. GTK apps that still draw CSD may need `GTK_CSD=0` or similar.
 
 ## Automation (`TINYWL_CMD_FIFO`)
 

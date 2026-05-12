@@ -149,7 +149,7 @@ static void toplevel_decoration_handle_request_mode(struct wl_listener *listener
 	struct toplevel_decoration_ctx *ctx =
 		wl_container_of(listener, ctx, request_mode);
 	wlr_xdg_toplevel_decoration_v1_set_mode(ctx->deco,
-			WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_NONE);
+			WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }
 
 static void server_new_toplevel_decoration(struct wl_listener *listener, void *data) {
@@ -165,7 +165,7 @@ static void server_new_toplevel_decoration(struct wl_listener *listener, void *d
 	ctx->destroy.notify = toplevel_decoration_handle_destroy;
 	wl_signal_add(&deco->events.destroy, &ctx->destroy);
 	wlr_xdg_toplevel_decoration_v1_set_mode(deco,
-			WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_NONE);
+			WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }
 
 static void focus_toplevel(struct tinywl_toplevel *toplevel) {
