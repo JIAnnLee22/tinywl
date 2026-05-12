@@ -4,7 +4,7 @@ WAYLAND_SCANNER!=$(PKG_CONFIG) --variable=wayland_scanner wayland-scanner
 
 PKGS="scenefx-0.4" "wlroots-0.19" wayland-server xkbcommon glesv2 pixman-1
 CFLAGS_PKG_CONFIG!=$(PKG_CONFIG) --cflags $(PKGS)
-CFLAGS+=$(CFLAGS_PKG_CONFIG) -std=c11 -Wall -Wextra -D_GNU_SOURCE -Isrc -Iprotocol
+CFLAGS+=$(CFLAGS_PKG_CONFIG) -std=c11 -Wall -Wextra -D_GNU_SOURCE -Iprotocol
 LIBS!=$(PKG_CONFIG) --libs $(PKGS)
 
 all: tinywl
