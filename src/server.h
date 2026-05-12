@@ -93,7 +93,8 @@ struct tinywl_toplevel {
 	struct wl_listener request_fullscreen;
 
 	float opacity;
-	/* Compositor frame behind the client surface (no shadow / blur). */
+	int corner_radius;
+	struct wlr_scene_shadow *shadow;
 	struct wlr_scene_rect *border;
 	/* Set when the user starts an interactive move in float layout. */
 	bool float_user_positioned;

@@ -57,7 +57,13 @@ make install DESTDIR=/tmp/stage PREFIX=/usr
 make
 ```
 
-The Makefile runs `wayland-scanner` to generate `protocol/xdg-shell-protocol.h` from `wayland-protocols` (path from `pkg-config --variable=pkgdatadir wayland-protocols`).
+The default **`tinywl`** binary is linked from **`src/compositor.c`**, **`src/config.c`**, and **`src/layout.c`**, using the same scenefx 0.4 scene APIs as the checked-in **`tinywl.c`** reference sample. The Makefile runs **`wayland-scanner`** to generate **`protocol/xdg-shell-protocol.h`**.
+
+To build only the single-file scenefx sample (root **`tinywl.c`**) as **`tinywl-sample`**:
+
+```bash
+make tinywl-sample
+```
 
 ---
 

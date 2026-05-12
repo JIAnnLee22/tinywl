@@ -12,6 +12,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <scenefx/render/fx_renderer/fx_renderer.h>
+#include <scenefx/types/fx/corner_location.h>
 #include <scenefx/types/wlr_scene.h>
 #include <wayland-server-core.h>
 #include <wayland-util.h>
@@ -445,7 +446,7 @@ static void process_cursor_resize(struct tinywl_server *server) {
 		.x = geo_box->x,
 		.y = geo_box->y,
 	};
-	wlr_scene_subsurface_tree_set_clip(&toplevel->scene_tree->node, &clip);
+	wlr_scene_subsurface_tree_set_clip(&toplevel->xdg_scene_tree->node, &clip);
 }
 
 static void process_cursor_motion(struct tinywl_server *server, uint32_t time) {
@@ -593,10 +594,25 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
 	struct wlr_box *geometry = &toplevel->xdg_toplevel->base->geometry;
 	wlr_scene_subsurface_tree_set_clip(&toplevel->xdg_scene_tree->node, geometry);
 
-	if (toplevel->border != NULL) {
-		int w = geometry->width + TINYWL_BORDER_THICKNESS * 2;
-		int h = geometry->height + TINYWL_BORDER_THICKNESS * 2;
-		wlr_scene_rect_set_size(toplevel->border, w, h);
+	if (toplevel->border != NULL && toplevel->shadow != NULL) {
+		int border_width = geometry->width + TINYWL_BORDER_THICKNESS * 2;
+		int border_height = geometry->height + TINYWL_BORDER_THICKNESS * 2;
+		wlr_scene_rect_set_size(toplevel->border, border_width, border_height);
+		wlr_scene_rect_set_clipped_region(toplevel->border, (struct clipped_region){
+				.area = {TINYWL_BORDER_THICKNESS, TINYWL_BORDER_THICKNESS,
+						geometry->width, geometry->height},
+				.corner_radius = toplevel->corner_radius,
+				.corners = CORNER_LOCATION_ALL,
+		});
+		int blur_sigma = (int)toplevel->shadow->blur_sigma;
+		wlr_scene_shadow_set_size(toplevel->shadow,
+				border_width + blur_sigma * 2,
+				border_height + blur_sigma * 2);
+		wlr_scene_shadow_set_clipped_region(toplevel->shadow, (struct clipped_region){
+				.area = {blur_sigma, blur_sigma, border_width, border_height},
+				.corner_radius = toplevel->corner_radius + TINYWL_BORDER_THICKNESS,
+				.corners = CORNER_LOCATION_ALL,
+		});
 	}
 	if (toplevel->server->layout_mode == LAYOUT_FLOAT) {
 		layout_arrange(toplevel->server);
@@ -630,6 +646,11 @@ static void output_configure_scene(struct wlr_scene_node *node,
 				xdg_surface &&
 				xdg_surface->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
 			wlr_scene_buffer_set_opacity(buffer, toplevel->opacity);
+
+			if (!wlr_subsurface_try_from_wlr_surface(xdg_surface->surface)) {
+				wlr_scene_buffer_set_corner_radius(
+						buffer, toplevel->corner_radius, CORNER_LOCATION_BOTTOM);
+			}
 		}
 	} else if (node->type == WLR_SCENE_NODE_TREE) {
 		struct wlr_scene_tree *tree = wl_container_of(node, tree, node);
@@ -774,6 +795,14 @@ static void iter_xdg_scene_buffers(struct wlr_scene_buffer *buffer, int sx,
 			xdg_surface &&
 			xdg_surface->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
 		wlr_scene_buffer_set_opacity(buffer, toplevel->opacity);
+
+		if (!wlr_subsurface_try_from_wlr_surface(xdg_surface->surface)) {
+			wlr_scene_buffer_set_corner_radius(buffer, toplevel->corner_radius,
+					CORNER_LOCATION_BOTTOM);
+			wlr_scene_buffer_set_backdrop_blur(buffer, true);
+			wlr_scene_buffer_set_backdrop_blur_optimized(buffer, true);
+			wlr_scene_buffer_set_backdrop_blur_ignore_transparent(buffer, true);
+		}
 	}
 }
 
@@ -926,14 +955,26 @@ static void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
 	xdg_toplevel->base->data = toplevel->scene_tree;
 
 	toplevel->opacity = 1;
+	toplevel->corner_radius = 20;
 	toplevel->float_place_serial = ++server->float_place_serial;
 
-	/* Plain rect frame (no scenefx shadow / rounded corners on buffers). */
 	static const float border_color[4] = { 0.35f, 0.35f, 0.38f, 1.f };
 	toplevel->border = wlr_scene_rect_create(toplevel->scene_tree, 0, 0, border_color);
+	wlr_scene_rect_set_corner_radius(toplevel->border,
+			toplevel->corner_radius + TINYWL_BORDER_THICKNESS, CORNER_LOCATION_BOTTOM);
 	wlr_scene_node_set_position(&toplevel->border->node, -TINYWL_BORDER_THICKNESS,
 			-TINYWL_BORDER_THICKNESS);
+
+	float blur_sigma = 20.0f;
+	toplevel->shadow = wlr_scene_shadow_create(toplevel->scene_tree,
+			0, 0, toplevel->corner_radius, blur_sigma,
+			(float[4]){ 0.f, 0.2f, 0.15f, 0.35f });
+	wlr_scene_node_set_position(&toplevel->shadow->node,
+			-TINYWL_BORDER_THICKNESS - blur_sigma,
+			-TINYWL_BORDER_THICKNESS - blur_sigma);
+
 	wlr_scene_node_lower_to_bottom(&toplevel->border->node);
+	wlr_scene_node_lower_to_bottom(&toplevel->shadow->node);
 
 	/* Listen to the various events it can emit */
 	toplevel->map.notify = xdg_toplevel_map;
@@ -1203,6 +1244,11 @@ int main(int argc, char *argv[]) {
 	float top_rect_color[4] = { 1, 0, 0, 1 };
 	struct wlr_scene_rect *rect = wlr_scene_rect_create(server.layers.toplevel_layer,
 			200, 200, top_rect_color);
+	wlr_scene_rect_set_clipped_region(rect, (struct clipped_region){
+			.area = {.x = 50, .y = 50, .width = 100, .height = 100},
+			.corner_radius = 12,
+			.corners = CORNER_LOCATION_TOP,
+	});
 	wlr_scene_node_set_position(&rect->node, 200, 200);
 
 	/* Set up xdg-shell version 3. The xdg-shell is a Wayland protocol which is

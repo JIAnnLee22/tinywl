@@ -1,3 +1,5 @@
 /tinywl
+tinywl-sample
+tinywl-sample.o
 src/*.o
 protocol/
