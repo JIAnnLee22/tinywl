@@ -36,6 +36,8 @@ struct tinywl_server {
 	struct wlr_xdg_shell *xdg_shell;
 	struct wl_listener new_xdg_toplevel;
 	struct wl_listener new_xdg_popup;
+	struct wlr_xdg_decoration_manager_v1 *xdg_decoration_manager;
+	struct wl_listener new_toplevel_decoration;
 	struct wl_list toplevels;
 
 	struct wlr_cursor *cursor;

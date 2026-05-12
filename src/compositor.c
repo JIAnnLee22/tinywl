@@ -30,6 +30,7 @@
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_subcompositor.h>
 #include <wlr/types/wlr_xcursor_manager.h>
+#include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon.h>
@@ -42,6 +43,45 @@ static int cmd_fifo_fd = -1;
 static struct wl_event_source *cmd_fifo_source = NULL;
 static char cmd_carry[512];
 static size_t cmd_carry_len;
+
+struct toplevel_decoration_ctx {
+	struct wlr_xdg_toplevel_decoration_v1 *deco;
+	struct wl_listener request_mode;
+	struct wl_listener destroy;
+};
+
+static void toplevel_decoration_handle_destroy(struct wl_listener *listener, void *data) {
+	(void)data;
+	struct toplevel_decoration_ctx *ctx =
+		wl_container_of(listener, ctx, destroy);
+	wl_list_remove(&ctx->request_mode.link);
+	wl_list_remove(&ctx->destroy.link);
+	free(ctx);
+}
+
+static void toplevel_decoration_handle_request_mode(struct wl_listener *listener, void *data) {
+	(void)data;
+	struct toplevel_decoration_ctx *ctx =
+		wl_container_of(listener, ctx, request_mode);
+	wlr_xdg_toplevel_decoration_v1_set_mode(ctx->deco,
+			WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_NONE);
+}
+
+static void server_new_toplevel_decoration(struct wl_listener *listener, void *data) {
+	(void)listener;
+	struct wlr_xdg_toplevel_decoration_v1 *deco = data;
+	struct toplevel_decoration_ctx *ctx = calloc(1, sizeof(*ctx));
+	if (ctx == NULL) {
+		return;
+	}
+	ctx->deco = deco;
+	ctx->request_mode.notify = toplevel_decoration_handle_request_mode;
+	wl_signal_add(&deco->events.request_mode, &ctx->request_mode);
+	ctx->destroy.notify = toplevel_decoration_handle_destroy;
+	wl_signal_add(&deco->events.destroy, &ctx->destroy);
+	wlr_xdg_toplevel_decoration_v1_set_mode(deco,
+			WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_NONE);
+}
 
 static void cmd_fifo_teardown(void) {
 	if (cmd_fifo_source != NULL) {
@@ -649,7 +689,7 @@ static void output_configure_scene(struct wlr_scene_node *node,
 
 			if (!wlr_subsurface_try_from_wlr_surface(xdg_surface->surface)) {
 				wlr_scene_buffer_set_corner_radius(
-						buffer, toplevel->corner_radius, CORNER_LOCATION_BOTTOM);
+						buffer, toplevel->corner_radius, CORNER_LOCATION_ALL);
 			}
 		}
 	} else if (node->type == WLR_SCENE_NODE_TREE) {
@@ -798,7 +838,7 @@ static void iter_xdg_scene_buffers(struct wlr_scene_buffer *buffer, int sx,
 
 		if (!wlr_subsurface_try_from_wlr_surface(xdg_surface->surface)) {
 			wlr_scene_buffer_set_corner_radius(buffer, toplevel->corner_radius,
-					CORNER_LOCATION_BOTTOM);
+					CORNER_LOCATION_ALL);
 			wlr_scene_buffer_set_backdrop_blur(buffer, true);
 			wlr_scene_buffer_set_backdrop_blur_optimized(buffer, true);
 			wlr_scene_buffer_set_backdrop_blur_ignore_transparent(buffer, true);
@@ -961,7 +1001,7 @@ static void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
 	static const float border_color[4] = { 0.35f, 0.35f, 0.38f, 1.f };
 	toplevel->border = wlr_scene_rect_create(toplevel->scene_tree, 0, 0, border_color);
 	wlr_scene_rect_set_corner_radius(toplevel->border,
-			toplevel->corner_radius + TINYWL_BORDER_THICKNESS, CORNER_LOCATION_BOTTOM);
+			toplevel->corner_radius + TINYWL_BORDER_THICKNESS, CORNER_LOCATION_ALL);
 	wlr_scene_node_set_position(&toplevel->border->node, -TINYWL_BORDER_THICKNESS,
 			-TINYWL_BORDER_THICKNESS);
 
@@ -1247,7 +1287,7 @@ int main(int argc, char *argv[]) {
 	wlr_scene_rect_set_clipped_region(rect, (struct clipped_region){
 			.area = {.x = 50, .y = 50, .width = 100, .height = 100},
 			.corner_radius = 12,
-			.corners = CORNER_LOCATION_TOP,
+			.corners = CORNER_LOCATION_ALL,
 	});
 	wlr_scene_node_set_position(&rect->node, 200, 200);
 
@@ -1261,6 +1301,12 @@ int main(int argc, char *argv[]) {
 	wl_signal_add(&server.xdg_shell->events.new_toplevel, &server.new_xdg_toplevel);
 	server.new_xdg_popup.notify = server_new_xdg_popup;
 	wl_signal_add(&server.xdg_shell->events.new_popup, &server.new_xdg_popup);
+
+	server.xdg_decoration_manager =
+			wlr_xdg_decoration_manager_v1_create(server.wl_display);
+	server.new_toplevel_decoration.notify = server_new_toplevel_decoration;
+	wl_signal_add(&server.xdg_decoration_manager->events.new_toplevel_decoration,
+			&server.new_toplevel_decoration);
 
 	/*
 	 * Creates a cursor, which is a wlroots utility for tracking the cursor
@@ -1391,6 +1437,7 @@ int main(int argc, char *argv[]) {
 
 	wl_list_remove(&server.new_xdg_toplevel.link);
 	wl_list_remove(&server.new_xdg_popup.link);
+	wl_list_remove(&server.new_toplevel_decoration.link);
 
 	wl_list_remove(&server.cursor_motion.link);
 	wl_list_remove(&server.cursor_motion_absolute.link);
