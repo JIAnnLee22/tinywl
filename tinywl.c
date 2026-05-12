@@ -133,7 +133,39 @@ struct toplevel_decoration_ctx {
 	struct wlr_xdg_toplevel_decoration_v1 *deco;
 	struct wl_listener request_mode;
 	struct wl_listener destroy;
+	struct wl_listener surface_commit;
+	bool surface_commit_linked;
 };
+
+static void toplevel_decoration_apply_server_side(struct toplevel_decoration_ctx *ctx);
+
+static void decoration_surface_commit(struct wl_listener *listener, void *data) {
+	(void)data;
+	struct toplevel_decoration_ctx *ctx =
+		wl_container_of(listener, ctx, surface_commit);
+	struct wlr_xdg_surface *base = ctx->deco->toplevel->base;
+	if (!base->initialized) {
+		return;
+	}
+	wlr_xdg_toplevel_decoration_v1_set_mode(ctx->deco,
+			WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+	wl_list_remove(&ctx->surface_commit.link);
+	ctx->surface_commit_linked = false;
+}
+
+static void toplevel_decoration_apply_server_side(struct toplevel_decoration_ctx *ctx) {
+	struct wlr_xdg_surface *base = ctx->deco->toplevel->base;
+	if (base->initialized) {
+		wlr_xdg_toplevel_decoration_v1_set_mode(ctx->deco,
+				WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+		return;
+	}
+	if (!ctx->surface_commit_linked) {
+		ctx->surface_commit.notify = decoration_surface_commit;
+		wl_signal_add(&base->surface->events.commit, &ctx->surface_commit);
+		ctx->surface_commit_linked = true;
+	}
+}
 
 static void toplevel_decoration_handle_destroy(struct wl_listener *listener, void *data) {
 	(void)data;
@@ -141,6 +173,9 @@ static void toplevel_decoration_handle_destroy(struct wl_listener *listener, voi
 		wl_container_of(listener, ctx, destroy);
 	wl_list_remove(&ctx->request_mode.link);
 	wl_list_remove(&ctx->destroy.link);
+	if (ctx->surface_commit_linked) {
+		wl_list_remove(&ctx->surface_commit.link);
+	}
 	free(ctx);
 }
 
@@ -148,8 +183,7 @@ static void toplevel_decoration_handle_request_mode(struct wl_listener *listener
 	(void)data;
 	struct toplevel_decoration_ctx *ctx =
 		wl_container_of(listener, ctx, request_mode);
-	wlr_xdg_toplevel_decoration_v1_set_mode(ctx->deco,
-			WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+	toplevel_decoration_apply_server_side(ctx);
 }
 
 static void server_new_toplevel_decoration(struct wl_listener *listener, void *data) {
@@ -164,8 +198,7 @@ static void server_new_toplevel_decoration(struct wl_listener *listener, void *d
 	wl_signal_add(&deco->events.request_mode, &ctx->request_mode);
 	ctx->destroy.notify = toplevel_decoration_handle_destroy;
 	wl_signal_add(&deco->events.destroy, &ctx->destroy);
-	wlr_xdg_toplevel_decoration_v1_set_mode(deco,
-			WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+	toplevel_decoration_apply_server_side(ctx);
 }
 
 static void focus_toplevel(struct tinywl_toplevel *toplevel) {
